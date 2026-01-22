@@ -1,0 +1,360 @@
+---
+title: "Exploratory Data Analysis of Chronic Disease Indicators"
+author: "Maggie Kohn"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+
+################################################################################
+# load libraries
+################################################################################
+library(readr)
+library(labelled)
+library(tidyverse)
+library(DT)
+library(skimr)
+
+################################################################################
+# import data
+################################################################################
+clean_cdi <- read_csv(file = "../data/processed/clean_cdi.csv")
+skim(clean_cdi)
+
+################################################################################
+# add labels to cleaned dataset
+################################################################################
+var_label(clean_cdi) <- list(
+  Year                    = "Year(s) the data was collected",
+  LocationAbbr            = "Location abbreviation",
+  Topic                   = "Broad health category",
+  Question                = "Specific health indicator",
+  DataValue               = "Reported value",
+  DataValueUnit           = "Unit of measurement",
+  DataValueType           = "Type of measurement",
+  DataValueFootnote       = "Explanation of missingness",
+  LowConfidenceLimit      = "Lower bound of the 95% confidence interval",
+  HighConfidenceLimit     = "Upper bound of the 95% confidence interval",
+  StratificationCategory1 = "Stratification category",
+  Stratification1         = "Group within the stratification category",
+  DataSource              = "Source for the reported value"
+)
+
+################################################################################
+# standardized theme
+###############################################################################
+theme_set(
+  theme_light(base_size = 12) +
+    theme(
+      # --- Axis: black ticks and text ---
+      axis.line = element_line(colour = "black", linewidth = 0.1),
+      axis.ticks = element_line(colour = "black", linewidth = 0.5),
+      axis.text = element_text(color = "black"),
+      axis.text.x = element_text(size = rel(0.9)),
+      
+      # --- Title: left-justified, bold text ---
+      plot.title = element_text(
+        face = "bold", 
+        hjust = 0.0
+      ),
+      
+      # --- Legend: bottom position ---
+      legend.position = c(.85, .92),
+      legend.title = element_blank(),
+      #legend.key.spacing.y = unit(4, 'pt'),
+      legend.key = element_rect(fill = "transparent"),
+      legend.background = element_rect(fill = "grey85")
+    )
+  )
+```
+
+------------------------------------------------------------------------
+
+## Comparable Topics & Questions
+
+To safely compare data across different indicators, we need to ensure that the units and types of measurements are consistent. The table below summarizes the number of unique topics and questions available for each combination of `DataValueUnit` and `DataValueType`. 
+
+```{r comparable, echo=FALSE}
+clean_cdi |>
+  group_by(DataValueUnit, DataValueType) |>
+  summarize(
+    n_questions = n_distinct(Question),
+    n_topics    = n_distinct(Topic),
+    .groups     = "drop"
+  ) |>
+  mutate(
+    DataValueType = fct_reorder(DataValueType, n_questions)
+  ) |> 
+  arrange(desc(n_topics)) |> 
+  datatable()
+```
+
+------------------------------------------------------------------------
+
+#### Let's take a closer look at the most common combination: `%` and `Crude Prevalence`. The table below lists all the unique questions available for this combination. 
+The majority of these are **risk factors** for chronic diseases.
+
+```{r common_questions_1, echo=FALSE}
+clean_cdi |> 
+  filter(
+    DataValueUnit == "%" &
+    DataValueType == "Crude Prevalence"
+  ) |> 
+  distinct(Topic, Question) |> 
+  arrange(Topic) |> 
+  datatable()
+```
+
+##### The following visualizations use two questions from this group:
+
+```{r diabetes_insurance_1, echo=FALSE, warning=FALSE, paged.print=TRUE}
+
+questions_to_filter <- c(
+    "Diabetes among adults", 
+    "Lack of health insurance among adults aged 18-64 years"
+  )
+
+clean_cdi |> 
+  filter(
+    Question %in% questions_to_filter,
+    DataValueType   == "Crude Prevalence",
+    Stratification1 == "Overall",
+    LocationAbbr    == "US"
+  ) |>
+  mutate(Question = str_split_i(Question, " among ", 1)) |>
+  
+  ggplot(
+    aes(
+      x     = Year,
+      y     = DataValue,
+      color = Question,
+      group = Question
+    )
+  ) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  labs(
+    title = "Prevalence of diabetes among adults by year",
+    x     = "Year",
+    y     = "Crude Prevalence (%)"
+  )
+
+```
+
+Significant missingness (17 states in 2022) in the lack of health insurance data for the year of 2022 may also be affecting this trend. When more data is uploaded to the CDI dataset this may impact the trend. Based on the states that have uploaded data for both indicators it appears that as more people have access to health insurance the prevalence of diabetes increases suggesting that diagnoses are under counted when people do not have access to healthcare. 
+
+------------------------------------------------------------------------
+
+#### Let's take a closer look at the next most common combination: `%` and `Age-adjusted Prevalence`. The table below lists all the unique questions available for this combination.
+The majority of these are risk factors for chronic diseases.
+
+```{r common_questions_2, echo=FALSE}
+clean_cdi |> 
+  filter(
+    DataValueUnit == "%" &
+    DataValueType == "Age-adjusted Prevalence"
+  ) |> 
+  distinct(Topic, Question) |> 
+  arrange(Topic) |> 
+  datatable()
+```
+
+##### The following visualizations use two questions from this group:
+
+```{r diabetes_insurance_2, echo=FALSE, warning=FALSE, paged.print=TRUE}
+
+clean_cdi |> 
+  filter(
+    Question %in% questions_to_filter,
+    DataValueType   == "Age-adjusted Prevalence",
+    Stratification1 == "Overall",
+    LocationAbbr    == "US"
+  ) |>
+  mutate(Question = str_split_i(Question, " among ", 1)) |>
+  
+  ggplot(
+    aes(
+      x     = Year,
+      y     = DataValue,
+      color = Question,
+      group = Question
+    )
+  ) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  labs(
+    title = "Prevalence of diabetes among adults by year",
+    x     = "Year",
+    y     = "Age-adjusted Prevalence (%)"
+  )
+
+```
+
+Age adjusted diabetes prevelence doesnt appear to be affected by age adjusted lack of health insurance prevalence.
+Significant missingness (17 states in 2022) in the lack of health insurance data for the year of 2022 may also be affecting this trend. When more data is uploaded to the CDI dataset this may impact the trend. Based on the states that have uploaded data for both indicators it appears that as more people have access to health insurance the prevalence of diabetes increases suggesting that diagnoses are under counted when people do not have access to healthcare. 
+
+------------------------------------------------------------------------
+
+#### Let's take a closer look at the next most common combination: `Number` and `Number`. The table below lists all the unique questions available for this combination.
+
+```{r common_questions_3, echo=FALSE}
+clean_cdi |> 
+  filter(
+    DataValueUnit == "Number" &
+    DataValueType == "Number"
+  ) |> 
+  distinct(Topic, Question) |> 
+  arrange(Topic) |> 
+  datatable()
+```
+
+The majority of these are counts of chronic disease cases and mortality rates.
+
+------------------------------------------------------------------------
+
+#### Let's take a closer look at the next most common combination: `cases per 100,000` and `Age-adjusted Rate`. The table below lists all the unique questions available for this combination.
+
+```{r common_questions_4, echo=FALSE}
+clean_cdi |> 
+  filter(
+    DataValueUnit == "cases per 100,000" &
+    DataValueType == "Age-adjusted Rate"
+  ) |> 
+  distinct(Topic, Question) |> 
+  arrange(Topic) |> 
+  datatable()
+```
+
+The majority of these are counts of chronic disease cases and mortality rates.
+
+------------------------------------------------------------------------
+
+#### Let's take a closer look at the next most common combination: `cases per 100,000` and `Crude Rate`. The table below lists all the unique questions available for this combination.
+
+```{r common_questions_5, echo=FALSE, warning=FALSE, paged.print=TRUE}
+clean_cdi |> 
+  filter(
+    DataValueUnit == "cases per 100,000" &
+    DataValueType == "Crude Rate"
+  ) |> 
+  distinct(Topic, Question) |> 
+  arrange(Topic) |> 
+  datatable()
+```
+
+The majority of these are counts of chronic disease cases and mortality rates.
+
+------------------------------------------------------------------------
+
+
+```{r insurance_mortality, echo=FALSE, warning=FALSE}
+mortality <- clean_cdi |>
+  filter(
+    str_detect(Question, "mortality"),
+    str_detect(DataValueType, "Age-adjusted"),
+    LocationAbbr != "US",
+    Stratification1 == "Overall",
+    str_detect(Year, "^\\d{4}$")
+  ) |>
+  group_by(LocationAbbr, Year) |>
+  summarize(
+    avg_mortality = mean(DataValue, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+insurance <- clean_cdi |>
+  filter(
+    Question == "Lack of health insurance among adults aged 18-64 years",
+    str_detect(DataValueType, "Age-adjusted"),
+    LocationAbbr != "US",
+    Stratification1 == "Overall"
+  ) |>
+  select(LocationAbbr, Year, uninsured_rate = DataValue)
+
+combined <- mortality |>
+  inner_join(insurance, by = c("LocationAbbr", "Year"))
+
+
+combined |> 
+  ggplot(
+    aes(
+      x = uninsured_rate, 
+      y = avg_mortality
+    )
+  ) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm") +
+  facet_grid(~Year) +
+  labs(
+    title = "Uninsured rates by mortality rates",
+    x = "Uninsured rate (Age-adjusted prevalence %)",
+    y = "Mortality rate (Age-adjusted rate per 100,000)"
+  )
+
+```
+
+
+--------------------------------------------------------------------------------
+
+## General Questions
+
+### Which state has the highest mortality rate?
+```{r highest_mort_rate}
+clean_cdi |> 
+  filter(
+    str_detect(Question, "mortality"),
+    str_detect(DataValueType, "Age-adjusted"),
+    Stratification1 == "Overall",
+    str_detect(Year, "^\\d{4}$")
+  ) |>
+  arrange(desc(DataValue)) |>
+  select(Year, LocationAbbr, DataValue) |>
+  datatable()
+
+```
+
+
+
+### Which state has the highest uninsured rate?
+```{r highest_uninsured_rate}
+clean_cdi |> 
+  filter(
+    str_detect(Question, "Lack of health insurance among adults"),
+    str_detect(DataValueType, "Age-adjusted"),
+    Stratification1 == "Overall",
+    str_detect(Year, "^\\d{4}$")
+  ) |>
+  arrange(desc(DataValue)) |>
+  select(Year, LocationAbbr, DataValue) |>
+  datatable()
+
+```
+
+### Which chronic disease has the most missing data?
+```{r}
+
+topic_of_interest <- c(
+  "Chronic Obstructive Pulmonary Disease",
+  "Cardiovascular Disease",
+  "Diabetes"
+)
+
+
+
+clean_cdi |> 
+  filter(
+    Topic %in% topic_of_interest,
+    str_detect(Question, "mortality"),
+    str_detect(DataValueType, "Age-adjusted"),
+    Stratification1 == "Overall",
+    !(is.na(DataValueFootnote))
+  ) |> 
+  select(
+    LocationAbbr,
+    Topic,
+    Year
+  ) |> 
+  datatable()
+  
+
+```

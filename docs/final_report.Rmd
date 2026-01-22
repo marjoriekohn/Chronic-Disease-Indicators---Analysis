@@ -1,0 +1,499 @@
+---
+title: "Final Report"
+author: "Maggie Kohn"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+
+###########################################################
+# load libraries
+###########################################################
+library(readr)
+library(labelled)
+library(tidyverse)
+library(DT)
+
+###########################################################
+# import data
+###########################################################
+raw_cdi   <- read_csv(file = "../data/raw/chronic_disease_indicators.csv")
+clean_cdi <- read_csv(file = "../data/processed/clean_cdi.csv")
+
+
+###########################################################
+# add labels to cleaned dataset
+###########################################################
+var_label(clean_cdi) <- list(
+  Year                        = "Year the data was collected",
+  LocationID                  = "Unique location identifier",
+  LocationAbbr                = "State or territory abbreviation",
+  LocationDesc                = "State or territory full name",
+  TopicID                     = "Unique topic identifier",
+  Topic                       = "Broad health category",
+  QuestionID                  = "Unique question identifier",
+  Question                    = "Specific health indicator",
+  DataValue                   = "Reported value",
+  DataValueUnit               = "Unit of measurement",
+  DataValueTypeID             = "Unique data value type identifier",
+  DataValueType               = "Method of measurement",
+  DataValueFootnote           = "Reason of missingness, if applicable",
+  DataValueFootnoteSymbol     = "Symbol for footnote",
+  LowConfidenceLimit          = "Lower 95% confidence interval",
+  HighConfidenceLimit         = "Upper 95% confidence interval",
+  StratificationCategoryID1   = "Unique stratification category identifier",
+  StratificationCategory1     = "Stratification category",
+  StratificationID1           = "Unique stratification identifier",
+  Stratification1             = "Group within the stratification category",
+  DataSource                  = "Source for the reported value",
+  Geolocation                 = "Location coordinates (latitude, longitude)"
+)
+
+###########################################################
+# standardized theme
+###########################################################
+theme_set(
+  theme_linedraw(base_size = 12) +
+    theme(
+      # --- Axis: black ticks and text ---
+      axis.line = element_line(colour = "black", linewidth = 0.1),
+      axis.ticks = element_line(colour = "black", linewidth = 0.5),
+      axis.text = element_text(color = "black"),
+      axis.text.x = element_text(size = rel(0.9)),
+      
+      # --- Title: left-justified, bold text ---
+      plot.title.position = "plot",
+      plot.title = element_text(
+        face = "bold", 
+        hjust = 0.0
+      ),
+      
+      # --- Legend: bottom position ---
+      legend.position = "bottom",
+      legend.title = element_blank(),
+      legend.key.spacing.y = unit(4, 'pt'),
+      legend.key = element_rect(fill = "transparent"),
+      legend.background = element_rect(fill = "grey85")
+    )
+  )
+```
+
+This analysis examines how socioeconomic conditions relate to the burden of chronic disease across the United States. The Centers for Disease Control and Prevention’s [Chronic Disease Indicators (CDI)](https://data.cdc.gov/Chronic-Disease-Indicators/U-S-Chronic-Disease-Indicators/hksd-2xuw/about_data) dataset aggregates and standardizes public health indicators across all U.S. states and territories.
+
+--------------------------------------------------------------------------------
+
+## Raw CDI Dataset
+
+The original CDI dataset contains `r format(nrow(raw_cdi), big.mark = ",")` observations and `r ncol(raw_cdi)` variables. The variable data types are as follows:
+
+-   **Numeric** Variables: `r sum(sapply(raw_cdi, is.numeric))`
+-   **Character** Variables: `r sum(sapply(raw_cdi, is.character))`
+-   **Logical** Variables: `r sum(sapply(raw_cdi, is.logical))`
+
+Missing data occurs across several variables:
+
+- All **logical** variables appear to be empty placeholders and will be excluded from this analysis. 
+
+- The **`DataValueFootnote`** variable documents reasons for missingness in `DataValue` and therefore contains many missing entries in rows where a value is present because it is only populated when data is suppressed or unavailable.
+
+- Overall, there are `r format(sum(is.na(raw_cdi$DataValue)), big.mark = ",")` rows with missingness in the **`DataValue`** column with `r format(sum(is.na(raw_cdi$DataValue[raw_cdi$StratificationCategory1 == "Race/Ethnicity"])), big.mark = ",")` of those occurring in observations stratified by race/ethnicity. Based on the `DataValueFootnote`, these values are suppressed because sample sizes were too small to report which makes direct comparison between these groups unreliable. 
+
+--------------------------------------------------------------------------------
+
+## Clean CDI Dataset
+
+After removing empty variables and filtering for relevant observations, the cleaned dataset contains `r format(nrow(clean_cdi), big.mark = ",")` observations and `r ncol(clean_cdi)` variables. The variable data types are as follows:
+
+-   Numeric Variables: `r sum(sapply(clean_cdi, is.numeric))`
+-   Character Variables: `r sum(sapply(clean_cdi, is.character))`
+-   Logical Variables: `r sum(sapply(clean_cdi, is.logical))`
+
+### Data Dictionary
+
+```{r data_dictionary, echo=FALSE}
+
+###########################################################
+# Extract data dictionary information from clean dataset
+###########################################################
+data_dict <- tibble(
+  "Variable Name" = colnames(clean_cdi),        # set names from colnames
+  "Variable Type" = if_else(
+    condition = sapply(clean_cdi, is.numeric),  # check if numeric
+    true      = "Numeric",                      # if so, label as numeric
+    false     = "Character"                     # otherwise, label as character
+  ),
+  "Description"   = unlist(var_label(clean_cdi))
+) |> 
+  arrange(`Variable Name`)
+
+datatable(data_dict, colnames = colnames(data_dict))
+```
+
+
+--------------------------------------------------------------------------------
+
+### Indicators of Health
+
+#### Life Expectancy at Birth
+Life expectancy at birth declined nationwide between 2019 and 2020 (Figure 1). Hawaii maintained the highest life expectancy, while Mississippi remained lowest.
+
+```{r figure1, echo=FALSE, message=FALSE, warning=FALSE}
+###########################################################
+# Life Expectancy at Birth
+###########################################################
+life_expectancy <- clean_cdi |> 
+  filter(
+    QuestionID == "HEA06",                  # life expectancy at birth
+    StratificationID1 == "OVR"              # overall stratification 
+  )
+
+# in the United States
+us_life_expectancy <- life_expectancy |> 
+  filter(LocationAbbr == "US") |>
+  select(Year, LocationDesc, DataValue)
+
+# in the state with highest life expectancy
+max_state <- life_expectancy |> 
+  filter(LocationAbbr != "US") |>
+  group_by(Year) |> 
+  slice_max(
+    DataValue, 
+    n = 1, 
+    with_ties = FALSE
+  ) |> 
+  ungroup() |> 
+  select(Year, LocationDesc, DataValue)
+
+# in the state with lowest life expectancy
+min_state <- life_expectancy |> 
+  filter(LocationAbbr != "US") |>
+  group_by(Year) |> 
+  slice_min(
+    DataValue, 
+    n = 1, 
+    with_ties = FALSE
+  ) |> 
+  ungroup() |> 
+  select(Year, LocationDesc, DataValue)
+  
+# combine all three
+life_expectancy_tidy <- bind_rows(
+  us_life_expectancy,
+  max_state,
+  min_state
+)
+
+##############################################################
+# Plot Life Expectancy
+##############################################################
+life_expectancy_tidy |>
+  ggplot(aes(
+    x = as.factor(Year), 
+    y = DataValue, 
+    color = LocationDesc, 
+    group = LocationDesc
+  )) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  labs(
+    x = "Year",
+    y = "Life expectancy at birth (years)"
+  )
+```
+
+Figure 1. Life expectancy at birth declined in the United States from 2019 to 2020.
+
+
+#### Social Determinants of Health
+Key socioeconomic indicators showed mixed changes between 2019 and 2021 (Figure 2). Uninsured rate improved but lack of routine checkups increased, poverty levels remained stable, and unemployment rose. Poverty and unemployment data is missing for 2020 and 2022.
+
+```{r figure2, echo=FALSE, message=FALSE, warning=FALSE}
+
+###########################################################
+# Social Determinants of Health
+###########################################################
+sdoh_tidy <- clean_cdi |> 
+  filter(
+    QuestionID %in% c(
+      "SDH12",        # routine checkup
+      "SDH09",        # uninsured
+      "SDH01",        # poverty
+      "SDH08"         # unemployment
+    ),
+    DataValueUnit == "%",
+    DataValueType == "Crude Prevalence",
+    StratificationID1 == "OVR"
+  ) |> 
+  #####################################################
+  # covert routine checkup to lack of routine checkup
+  #####################################################
+  mutate(
+    DataValue = if_else(
+      QuestionID == "SDH12",
+      (100 - DataValue),
+      DataValue
+    ),
+    Question = if_else(
+      QuestionID == "SDH12",
+      "Lack of routine checkup within the past year among adults",
+      Question
+    ),
+    # wrap for plotting
+    Question = str_wrap(Question, 45)
+  ) |> 
+  select(Year, LocationAbbr, Question, DataValue)
+
+###########################################################
+# Plot Social Determinants of Health
+###########################################################
+sdoh_us     <- sdoh_tidy |> filter(LocationAbbr == "US")
+sdoh_states <- sdoh_tidy |> filter(LocationAbbr != "US")
+
+ggplot() +
+  # state points (jittered)
+  geom_point(
+    data = sdoh_states,
+    aes(x = Year, y = DataValue),
+    position = position_jitter(width = 0.2, height = 0),
+    alpha = 0.25,
+    size  = 1
+  ) +
+  # US trend line
+  geom_line(
+    data = sdoh_us,
+    aes(x = Year, y = DataValue),
+    linewidth = 1.2
+  ) +
+  facet_wrap(~ Question, ncol = 2) +
+  labs(
+    x = "Year",
+    y = "Prevalence (%)"
+  ) 
+```
+
+Figure 2. Social determinants of health indicators across U.S. states and territories. Points represent individual states (jittered for visibility). The solid line indicates the national average.
+
+
+### Chronic Diseases
+
+#### Mortality Rates
+National mortality rates for major chronic diseases increased between 2019 and 2021 (Figure 3). Heart disease remained the leading cause throughout the period. Mortality from diabetes and coronary heart disease also increased modestly, while stroke showed only a slight increase.
+
+```{r figure3, echo=FALSE, message=FALSE, warning=FALSE}
+###########################################################
+# mortality Rates
+###########################################################
+mortality_rates <- clean_cdi |>
+  
+  #########################################################
+  # 1. keep only national age-adjusted mortality rates
+  #########################################################
+  filter(
+    LocationAbbr == "US",
+    StratificationCategory1 == "Overall",
+    str_detect(DataValueType, "Age-adjusted"),
+    str_detect(Question, "mortality")
+  ) |>
+  
+  #########################################################
+  # 2. remove the COPD "contributing cause" rows
+  #########################################################
+  filter(
+    !(Topic == "Chronic Obstructive Pulmonary Disease" &
+        str_detect(Question, "contributing cause"))
+  ) |>
+  
+  #########################################################
+  # 3. simplify question text
+  #########################################################
+  mutate(
+    Question = str_split_i(Question, " mortality", 1)
+  ) |>
+  
+  #########################################################
+  # 4. keep only high mortality diseases
+  #########################################################
+  filter(DataValue > 30) |>
+  
+  #########################################################
+  # 5. wrap and reorder for plotting
+  #########################################################
+  mutate(
+    Question = str_wrap(Question, 20),
+    Question = fct_reorder(Question, DataValue, .desc = TRUE)
+  ) |> 
+  select(Year, Question, DataValue)
+
+###########################################################
+# plot mortality rates
+############################################################
+mortality_rates |> 
+  ggplot(
+    aes(
+      x = Question,
+      y = DataValue,
+      fill = as.character(Year)
+    )
+  ) +
+  geom_col(position = "dodge") +    # side-by-side bars
+  labs(
+    x = "",
+    y = "Age-adjusted Rate (cases per 100,000)"
+  )
+```
+
+Figure 3. National age-adjusted mortality rates (per 100,000) for major chronic diseases between 2019 and 2021. 
+
+#### Hospitalization for COPD and Heart Failure
+COPD hospitalizations decreased from 2019 to 2020 for both men and women, followed by a modest increase in 2021 (Figure 4). Heart failure hospitalizations followed the same pattern at a lower overall rate. Men consistently had higher rates than women across all years.
+```{r figure4, echo=FALSE, message=FALSE, warning=FALSE}
+############################################################
+# hospitalization rate of top 2 chronic diseases
+############################################################
+hospitalization_copd_hf <- clean_cdi |> 
+  filter(
+    QuestionID %in% c(
+      "COPD03", # COPD hospitalization
+      "CVD06"   # heart failure hospitalization
+    ),
+    DataValueType == "Age-adjusted Rate",
+    LocationAbbr == "US"
+  ) |> 
+  select(Year, Question, DataValue, Stratification1) |> 
+  mutate(Question = str_wrap(Question, 40))
+
+############################################################
+# plot for hospitalization of top chronic diseases
+############################################################
+hospitalization_copd_hf |> 
+  ggplot(
+    aes(
+      x = as.factor(Year),
+      y = DataValue,
+      color = Stratification1,
+      group = Stratification1
+    )
+  ) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  facet_wrap(~ Question) +
+  labs(
+    x = "Year",
+    y = "Age-adjusted Rate (cases per 100,000)"
+  )
+```
+
+Figure 4. Age-adjusted hospitalization rates among Medicare beneficiaries aged 65 years and older for COPD and heart failure, stratified by sex.
+
+### Indicators of Health and Chronic Diseases
+
+#### Diabetes Prevalence vs Uninsured Prevalence
+Across all four years, states with higher uninsured prevalence tend to have higher rates of diabetes (Figure 5). The positive association was consistent from 2019 through 2022.
+
+```{r figure5, echo=FALSE, message=FALSE, warning=FALSE}
+###########################################################
+# average diabetes prevalence (state level data)
+###########################################################
+diabetes_prevalence <- clean_cdi |>
+  filter(
+    QuestionID == "DIA01",
+    DataValueType == "Age-adjusted Prevalence",
+    LocationAbbr != "US",
+    StratificationCategory1 == "Overall"
+  ) |>
+  select(LocationAbbr, Year, diabetes_prev = DataValue)
+
+###########################################################
+# uninsured prevalence (state level data)
+###########################################################
+uninsured_prevalence <- clean_cdi |>
+  filter(
+    QuestionID == "SDH09",       # lack of health insurance 
+    DataValueType == "Age-adjusted Prevalence",
+    LocationAbbr != "US",
+    StratificationCategory1 == "Overall"
+  ) |>
+  select(LocationAbbr, Year, uninsured_prev = DataValue)
+
+###########################################################
+# combining diabetes and uninsured prevalence data
+###########################################################
+diabetes_v_uninsured <- diabetes_prevalence |>
+  inner_join(
+    uninsured_prevalence, 
+    by = c("LocationAbbr", "Year")
+  )
+
+###########################################################
+# plot diabetes prevalence vs uninsured prevalence
+###########################################################
+diabetes_v_uninsured |> 
+  ggplot(
+    aes(
+      x = uninsured_prev, 
+      y = diabetes_prev
+    )
+  ) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm") +
+  facet_grid(~Year) +
+  labs(
+    x = "Uninsured prevalence (Age-adjusted prevalence %)",
+    y = "Diabetes prevalence (Age-adjusted rate per 100,000)"
+  )
+```
+
+Figure 5. Association between state level diabetes prevalence and lack of health insurance between 2019 and 2022. Points represent states values. The blue line shows the fitted linear trend with 95% confidence intervals.
+
+#### Mortality Rates vs Uninsured Prevalence
+Across all three years, states with higher uninsured rates tended to have higher mortality rates (Figure 6). The positive association was modest in 2019 and 2020, and appeared stronger in 2021, when the slope of the relationship steepened.
+
+```{r figure6, echo=FALSE, message=FALSE, warning=FALSE}
+###########################################################
+# average mortality rates across all diseases (state level data)
+###########################################################
+all_mortality_rates <- clean_cdi |>
+  filter(
+    str_detect(Question, "mortality"),
+    DataValueType == "Age-adjusted Rate",
+    LocationAbbr != "US",
+    StratificationCategory1 == "Overall"
+  ) |>
+  group_by(
+    LocationAbbr, 
+    Year
+  ) |>
+  summarize(
+    avg_mortality = mean(DataValue, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+###########################################################
+# combining mortality rates and uninsured prevalence data
+###########################################################
+mortality_v_uninsured <- all_mortality_rates |>
+  inner_join(
+    uninsured_prevalence, 
+    by = c("LocationAbbr", "Year")
+  )
+
+###########################################################
+# plot mortality rate vs uninsured Prevalence
+###########################################################
+mortality_v_uninsured |> 
+  ggplot(
+    aes(
+      x = uninsured_prev, 
+      y = avg_mortality
+    )
+  ) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm") +
+  facet_grid(~Year) +
+  labs(
+    x = "Uninsured Prevalence (Age-adjusted prevalence %)",
+    y = "Mortality Rate (Age-adjusted rate per 100,000)"
+  )
+```
+
+Figure 6. Association between mortality and lack of health insurance across U.S. states, 2019–2021. Points represent states values. The blue line shows the fitted linear trend with 95% confidence intervals.
