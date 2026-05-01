@@ -5,8 +5,8 @@
   "metadata": {
     "appmode": "rmd-static",
     "primary_rmd": "report.Rmd",
-    "primary_html": "report.html",
-    "content_category": "site",
+    "primary_html": null,
+    "content_category": null,
     "has_parameters": false
   },
   "packages": {
@@ -3339,8 +3339,11 @@
     "README.md": {
       "checksum": "c891720d2cbe4bb710348b9aa9f6e658"
     },
+    "report.html": {
+      "checksum": "7ee6d3b8032870a5c5fcb934bdd96145"
+    },
     "report.Rmd": {
-      "checksum": "56c2bb79a7c21683315f0e027f35dfbe"
+      "checksum": "bf9f0914dc12ea6b68adf8f000b58dc0"
     },
     "scripts/clean_data.R": {
       "checksum": "b97c8b460185da41cce64a9ca4bbaf36"
