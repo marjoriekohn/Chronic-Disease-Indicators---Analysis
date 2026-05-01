@@ -5,7 +5,7 @@
   "metadata": {
     "appmode": "rmd-static",
     "primary_rmd": "report.Rmd",
-    "primary_html": null,
+    "primary_html": "report.html",
     "content_category": "site",
     "has_parameters": false
   },
