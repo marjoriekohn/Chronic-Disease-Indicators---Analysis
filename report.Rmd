@@ -18,8 +18,8 @@ library(DT)
 ###########################################################
 # import data
 ###########################################################
-raw_cdi   <- read_csv(file = "../data/raw/chronic_disease_indicators.csv")
-clean_cdi <- read_csv(file = "../data/processed/clean_cdi.csv")
+raw_cdi   <- read_csv(file = "data/raw/chronic_disease_indicators.csv")
+clean_cdi <- read_csv(file = "data/processed/clean_cdi.csv")
 
 
 ###########################################################
